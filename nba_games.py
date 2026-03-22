@@ -2,10 +2,14 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+import numpy as np
 
 #%%
-df = pd.read_csv('./files/game.csv')
-df
+df = pd.read_csv('files/game.csv')
+df['game_date'] = pd.to_datetime(df['game_date'])
+df2 = df[df['game_date'] >= '2021-10-19 00:00:00'].copy()
+df2
+
 # %%
 
 # %%
@@ -16,6 +20,7 @@ df[df['win_home']].groupby('team_name_home').size()
 
 # %%
 ### 1: victory per season (home team)
+df['game_date'] = pd.to_datetime(df['game_date'])
 df2 = df[df['game_date'] >= '2021-10-19 00:00:00'].copy()
 df2
 # %%
@@ -174,7 +179,6 @@ plt.show
 #%%
 # with seaborn
 
-
 sns.lineplot(x=games_per_season.index, y=games_per_season.values)
 
 #%%
@@ -203,4 +207,179 @@ avg_points_w_vs_l = df2.groupby(['season_id', 'wl_home'])['pts_home'].mean().uns
 avg_points_w_vs_l
 
 #%%
-### 6 
+### 6 Scatter plot field goals madde vs ponts home
+
+df2_clean = df.dropna(subset=["fgm_home", "pts_home"])
+
+plt.figure()
+plt.scatter(df2_clean["fgm_home"], df2_clean["pts_home"])
+
+plt.xlabel("Field Goals Made (home)")
+plt.ylabel("Points Scored (home)")
+plt.title("FGM vs Points (home team)")
+
+plt.grid()
+plt.show()
+
+#%%
+### 7 Box Plot of Points by Season Type
+
+reg_season = df2[df2["season_type"] == "Regular Season"]
+
+plt.figure()
+
+sns.boxenplot(data=reg_season, x="season_type", y="pts_home")
+
+plt.xlabel("Season Type")
+plt.ylabel("Points (Home)")
+plt.title("Distribution of Home Points by Season Type")
+
+plt.xticks(rotation=30)
+plt.grid()
+plt.show()
+
+#%%
+### 8 Heatmap by Day of the Week
+
+df2['game_date'] = pd.to_datetime(df2['game_date'])
+
+df2['weekday'] = df2['game_date'].dt.day_name()
+
+# remove nulls
+df2_clean = df2.dropna(subset=['pts_home', 'season_type', 'weekday'])
+
+heatmap_data = df2_clean.groupby(['weekday', 'season_type'])['pts_home'].mean().reset_index()
+
+heatmap_pivot = heatmap_data.pivot(index='weekday', columns='season_type', values='pts_home')
+
+order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+heatmap_pivot = heatmap_pivot.reindex(order)
+
+plt.figure()
+
+sns.heatmap(heatmap_pivot, annot=True, fmt='.1f')
+
+plt.title("Average Home Points by Weekday and Season Type")
+plt.xlabel("Season Type")
+plt.ylabel("Weekday")
+
+plt.show()
+
+#%%
+### PART III
+### 9 Home Team Winning Streak
+
+def longest_home_win_streak(df, team_name):
+
+    team_home = (df[df['team_name_home'] == team_name].sort_values('game_date').copy())
+
+    team_home['win_home'] = team_home['wl_home'] == 'W'
+
+    max_streak = 0
+    current_streak = 0
+
+    for win in team_home['win_home']:
+        if win:
+            current_streak += 1
+
+            if current_streak > max_streak:
+                max_streak = current_streak
+        else:
+            current_streak = 0
+
+    return max_streak
+
+streak_lakers = longest_home_win_streak(df2, 'Milwaukee Bucks')
+#%%
+### 9 (other way to do)
+import itertools
+def longest_home_win_streak(df: pd.DataFrame, team_name: str) -> pd.DataFrame:
+
+    team_home = (df[df['team_name_home'] == team_name].sort_values('game_date'))
+    
+    streaks = team_home.groupby((team_home['wl_home'] != team_home['wl_home'].shift()).cumsum())['wl_home'].agg(result='first', length='count')
+
+    wins = streaks[streaks['result'] == "W"]['length']
+    return int(wins.max()) if not wins.empty else 0 
+
+streak_lakers = longest_home_win_streak(df2, 'Milwaukee Bucks')
+streak_lakers
+# %%
+### 10 Top 5 games with most score difference 
+
+df2['result_points'] = (df2['pts_home'] - df2['pts_away']).abs()
+
+top5 = df2[['matchup_home', 'result_points', 'wl_home']].sort_values(by='result_points', ascending=False).head(5)
+
+print(top5)
+
+#%%
+### 11 Comparison of Fouls and Losses
+
+pf_mean = df2.groupby("wl_home")["pf_home"].mean().reset_index()
+
+plt.figure()
+sns.barplot(data=pf_mean, x="wl_home", y="pf_home")
+
+plt.title("aaa")
+plt.xlabel("Results W/L")
+plt.ylabel("Fouls mean")
+plt.show()
+
+#%%
+### 12 Relationship Between Turnovers and Game Outcome
+
+mean_tov_home = df2.groupby('wl_home')['tov_home'].mean().reset_index()
+
+mean_tov_home
+
+#%%
+### PART 4 
+
+### 13 add a column with result
+#option 1
+df2['Result'] = df2['wl_home'].map({'W': 'Victory', 'L': 'Lose'})
+
+df2[['matchup_home', 'wl_home', 'Result']]
+#%%
+#option 2
+
+df2['result'] = np.where(df2['wl_home'] == 'W', 'Victory', 'Lose')
+
+df2[['matchup_home', 'wl_home', 'result']]
+
+#%%
+### 14 fuction that classifies low or high performance
+
+def low_high_perf(df: pd.DataFrame) -> pd.DataFrame:
+
+    df.assign(Home_Performance=np.where(df['pts_home'] >= 110, "High Performance", "Low Performance"))
+
+    return df[['matchup_home', 'pts_home', 'Home Performance']]
+
+low_high_perf(df2)
+#%%
+# Way 2
+def low_high_perf(df: pd.DataFrame) -> pd.DataFrame:
+    return (
+        df.assign(
+            Home_Performance=(df['pts_home'] >= 110).map({True: 'High Performance', False: 'Low Performance'})
+        )[['matchup_home', 'pts_home', 'Home_Performance']]
+    )
+
+#%%
+### 15 DataFrame with Average Statistics by Home Team
+
+mean_pts_reb_ast = df2.groupby('team_abbreviation_home')[['pts_home', 'reb_home', 'ast_home']].mean().round(2)
+
+#%%
+
+# way 2
+
+mean_pts_reb_ast = df2.groupby('team_abbreviation_home').agg(
+    mean_points=('pts_home', 'mean'),
+    mean_rebounds=('reb_home', 'mean'),
+    mean_assist=('ast_home', 'mean'),
+).round(2)
+
+mean_pts_reb_ast

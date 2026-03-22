@@ -13,5 +13,3 @@ The goal of this repository is to:
 - Strengthen knowledge of **Python for data analysis**.
 
 ---
-
-## 📂 Repository Structure
